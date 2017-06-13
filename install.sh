@@ -23,22 +23,27 @@
 # Version: 1.0
 ############################################
 
-VERSION_CTRULIB="1.2.1"
-VERSION_CITRO3D="1.2.0"
 
 DIR_INSTALL="$HOME/devkitPro"
 
-DEVKITARM_DOWNLOAD="https://sourceforge.net/projects/devkitpro/files/devkitARM/devkitARM_r46/devkitARM_r46-x86_64-linux.tar.bz2/download"
 LIBCTRU_DOWNLOAD="https://sourceforge.net/projects/devkitpro/files/libctru/1.2.1/libctru-1.2.1.tar.bz2/download"
 LIBCITRO3D_DOWNLOAD="https://sourceforge.net/projects/devkitpro/files/citro3d/1.2.0/citro3d-1.2.0.tar.bz2/download"
-TOOLS_3DS_DOWNLOAD="https://github.com/cpp3ds/3ds-tools/releases/download/r6/3ds-tools-linux-r6.tar.gz"
-CPP3DS_DOWNLOAD="https://github.com/Naxann/cpp3ds/releases/download/v0.4/cpp3ds-0.4.0-linux-x64.tar.gz"
+
+DEVKITARM_DOWNLOAD="https://sourceforge.net/projects/devkitpro/files/devkitARM/devkitARM_r46/devkitARM_r46-i686-linux.tar.bz2/download"
+TOOLS_3DS_DOWNLOAD="https://github.com/Naxann/3ds-tools/releases/download/r7/3ds-tools-linux-i686-r7.tar.gz"
+CPP3DS_DOWNLOAD="https://github.com/Naxann/cpp3ds/releases/download/v0.4/cpp3ds-0.4.0-linux-i686.tar.gz"
+
+DEVKITARM_DOWNLOAD_X64="https://sourceforge.net/projects/devkitpro/files/devkitARM/devkitARM_r46/devkitARM_r46-x86_64-linux.tar.bz2/download"
+TOOLS_3DS_DOWNLOAD_X64="https://github.com/Naxann/3ds-tools/releases/download/r7/3ds-tools-linux-x64-r7.tar.gz"
+CPP3DS_DOWNLOAD_X64="https://github.com/Naxann/cpp3ds/releases/download/v0.4/cpp3ds-0.4.0-linux-x64.tar.gz"
 SHELL_PROFILE=~/.profile
 
 SHELL_PROFILE_CHANGED=0
 SETUP_ENVIRONMENT_DEVKITARM="setted"
 SETUP_ENVIRONMENT_CPP3DS="setted"
 AUTO_CHANGE_SHELL_PROFILE=0
+
+FORCE_REINSTALL=0
 
 PORTLIBS_MUST_GET=()
 PORTLIBS_HAVE_TO_GET=0
@@ -68,9 +73,25 @@ fi
 
 source $FILEPATH_VARS
 
+if [ "$VERSION_CTRULIB" == "" ]; then
+	VERSION_CTRULIB="release-1.2.1"
+fi
+if [ "$VERSION_CITRO3D" == "" ]; then
+	VERSION_CITRO3D="release-1.2.0"
+fi
+
+
+for var in "$@"
+do
+    if [ "$var" -eq "--force-reinstall" ]; then FORCE_REINSTALL=1; fi
+done
 
 commandExists() {
 	return $(command -v $1 >/dev/null 2>&1);
+}
+
+isReleaseVersion() {
+	return [[ $1 == release-* ]];
 }
 
 hasEnvironmentShellProfile() {
@@ -254,10 +275,37 @@ lack3dsTools() {
 	return $HAS_ALL_TOOLS;
 }
 
+getProcArch() {
+	echo $(uname -m)
+}
+
+isProjectCPP3DS() {
+	FIRST_PORTLIB="${PORTLIBS[0]}"
+	if [ "$FIRST_PORTLIB" == "cpp3ds" ]; then return 0; else return 1; fi
+}
+
 ###############################
 # Installation of devkitARM
 # wget-only
 ###############################
+
+
+printf "Checking processor arch..."
+PROC_ARCH=$(getProcArch)
+
+if [ "$PROC_ARCH" != "i686" ] && [ "$PROC_ARCH" != "x86_64" ]; then
+	printf "error !\n"
+	printf "Your system must be on a x86 or x64 processor !\nExiting script..."
+	exit
+fi
+
+if [ "$PROC_ARCH" == "x86_64" ]; then
+	DEVKITARM_DOWNLOAD=$DEVKITARM_DOWNLOAD_X64
+	TOOLS_3DS_DOWNLOAD=$TOOLS_3DS_DOWNLOAD_X64
+	CPP3DS_DOWNLOAD=$CPP3DS_DOWNLOAD_X64
+fi
+
+printf "$PROC_ARCH\n"
 
 if lackEnvironmentVariable && hasEnvironmentShellProfile; then
 while true; do
@@ -315,18 +363,22 @@ fi
 ########################################
 
 printf "Checking ctrulib..."
-if hasLibCtru; then
+if [ "$FORCE_REINSTALL" -eq "0" ] && hasLibCtru; then
 	printf "installed.\n"
 	printf "Checking ctrulib version ..."
 	if ! isLibCtru_121; then
 		printf "error\nThe current libctru installed is not the version $VERSION_CTRULIB\n"
 		printf "citro3d $VERSION_CITRO3D and cpp3ds work only with libctru-$VERSION_CTRULIB\n"
-		printf "Remove libctru directory in $DEVKITPRO or install the $VERSION_CTRULIB by yourself.\n"
+		printf "Use --force-reinstall in $DEVKITPRO or install the $VERSION_CTRULIB by yourself.\n"
 		exit
 	fi
 	printf "$VERSION_CTRULIB ok\n"
 else
-	printf "not installed.\n"
+	if [ "$FORCE_REINSTALL" -eq "0" ]; then
+		printf "not installed.\n"
+	else
+		printf "force reinstall.\n"
+	fi
 	if ! commandExists "wget"; then
 		printf "Please install the package containing wget command and retry the installation\n"
 		exit
@@ -336,10 +388,14 @@ fi
 
 printf "Checking citro3d..."
 
-if hasLibCitro3D; then
+if [ "$FORCE_REINSTALL" -eq "0" ] && hasLibCitro3D; then
 	printf "installed.\n"
 else
-	printf "not installed.\n"
+	if [ "$FORCE_REINSTALL" -eq "0" ]; then
+		printf "not installed.\n"
+	else
+		printf "force reinstall.\n"
+	fi
 	if ! commandExists "wget"; then
 		printf "Please install the package containing wget command and retry the installation\n"
 		exit
@@ -351,67 +407,72 @@ fi
 # Copying / downloading cpp3ds
 ########################################
 
-printf "Checking if CPP3DS environment var is set..."
-if [ "$CPP3DS" == "" ]; then
-	printf "no\n"
-	export CPP3DS=$DEVKITPRO/cpp3ds
-	mkdir -p $CPP3DS
+printf "Is this project is / use cpp3ds ? "
+if isProjectCPP3DS || [ "$IS_CPP3DS" == "1" ]; then
+	printf "yes\n"
+	printf "Checking if CPP3DS environment var is set..."
+	if [ "$CPP3DS" == "" ]; then
+		printf "no\n"
+		export CPP3DS=$DEVKITPRO/cpp3ds
+		mkdir -p $CPP3DS
 
-	SETUP_ENVIRONMENT_CPP3DS="manual"
-	if hasEnvironmentShellProfile && [ $AUTO_CHANGE_SHELL_PROFILE -eq 1 ]; then
-		SETUP_ENVIRONMENT_CPP3DS="auto"
-		SHELL_PROFILE_CHANGED=1
+		SETUP_ENVIRONMENT_CPP3DS="manual"
+		if hasEnvironmentShellProfile && [ $AUTO_CHANGE_SHELL_PROFILE -eq 1 ]; then
+			SETUP_ENVIRONMENT_CPP3DS="auto"
+			SHELL_PROFILE_CHANGED=1
+		fi
+	else
+		printf "yes\n"
+	fi
+
+	mkdir -p $CPP3DS
+	mkdir -p $CPP3DS/lib
+	mkdir -p $CPP3DS/include
+	mkdir -p $CPP3DS/cmake
+	printf "Checking type of installation..."
+	if [ ! -d "$BASEDIR/../src/" ] && [ "$IS_CPP3DS" == "1" ]; then
+		# We are installing a release
+
+		printf "release\n"
+		printf "yes\Installing cpp3ds in $CPP3DS..."
+		cp -r $BASEDIR/lib $CPP3DS/
+		cp -r $BASEDIR/include $CPP3DS/
+		cp -r $BASEDIR/cmake $CPP3DS/
+		cp -r $BASEDIR/portlibs/* $DEVKITPRO/portlibs/armv6k/
+		printf "ok\n"
+	elif [ "$IS_CPP3DS" != "1" ]; then
+		printf "from app\n"
+		printf "Checking if CPP3DS is installed..."
+		if hasCPP3DS; then
+			printf "yes\n"
+		else
+			printf "no\n"
+			printf "Dowloading cpp3ds...\n"
+			PATH_DOWNLOAD=$(mktemp)
+			DIR_DOWNLOAD=$(mktemp -d)
+
+			download $PATH_DOWNLOAD $CPP3DS_DOWNLOAD
+			if [ ! $? -eq 0 ]; then
+				printf "error. cpp3ds link can't be accessed and download. Exiting installation."
+				exit
+			fi
+
+			tar -xaf $PATH_DOWNLOAD -C "$DIR_DOWNLOAD"
+
+			printf "Installing cpp3ds in $CPP3DS..."
+			cp -r $DIR_DOWNLOAD/cpp3ds/lib $CPP3DS/
+			cp -r $DIR_DOWNLOAD/cpp3ds/include $CPP3DS/
+			cp -r $DIR_DOWNLOAD/cpp3ds/cmake $CPP3DS/
+			cp -r $DIR_DOWNLOAD/cpp3ds/portlibs/* $DEVKITPRO/portlibs/armv6k/
+			printf "ok\n"
+
+			rm -r $DIR_DOWNLOAD
+			rm -r $PATH_DOWNLOAD
+		fi
 	fi
 else
-	printf "yes\n"
+	printf "no\n"
 fi
-
-mkdir -p $CPP3DS
-mkdir -p $CPP3DS/lib
-mkdir -p $CPP3DS/include
-mkdir -p $CPP3DS/cmake
-printf "Checking type of installation..."
-if [ ! -d "$BASEDIR/../src/" ] && [ "$IS_CPP3DS" == "1" ]; then
-	# We are installing a release
-
-	printf "release\n"
-	printf "yes\Installing cpp3ds in $CPP3DS..."
-	cp -r $BASEDIR/lib $CPP3DS/
-	cp -r $BASEDIR/include $CPP3DS/
-	cp -r $BASEDIR/cmake $CPP3DS/
-	cp -r $BASEDIR/portlibs/* $DEVKITPRO/portlibs/armv6k/
-	printf "ok\n"
-elif [ "$IS_CPP3DS" != "1" ]; then
-	printf "from app\n"
-	printf "Checking if CPP3DS is installed..."
-	if hasCPP3DS; then
-		printf "yes\n"
-	else
-		printf "no\n"
-		printf "Dowloading cpp3ds...\n"
-		PATH_DOWNLOAD=$(mktemp)
-		DIR_DOWNLOAD=$(mktemp -d)
-
-		download $PATH_DOWNLOAD $CPP3DS_DOWNLOAD
-		if [ ! $? -eq 0 ]; then
-			printf "error. cpp3ds link can't be accessed and download. Exiting installation."
-			exit
-		fi
-
-		tar -xaf $PATH_DOWNLOAD -C "$DIR_DOWNLOAD"
-
-		printf "Installing cpp3ds in $CPP3DS..."
-		cp -r $DIR_DOWNLOAD/cpp3ds/lib $CPP3DS/
-		cp -r $DIR_DOWNLOAD/cpp3ds/include $CPP3DS/
-		cp -r $DIR_DOWNLOAD/cpp3ds/cmake $CPP3DS/
-		cp -r $DIR_DOWNLOAD/cpp3ds/portlibs/* $DEVKITPRO/portlibs/armv6k/
-		printf "ok\n"
-
-		rm -r $DIR_DOWNLOAD
-		rm -r $PATH_DOWNLOAD
-	fi
-fi
-
 ########################################
 # Copying / downloading portlibs
 ########################################
@@ -432,6 +493,10 @@ fi
 # Then we check if we have the libs
 i=0
 for namePortlib in ${PORTLIBS[@]}; do
+	if [ "$namePortlib" == "cpp3ds" ]; then
+		((i++))
+		continue
+	fi
     filenameLib=$(getFilenamePortlib $namePortlib)
 
 	printf "Checking portlibs ${PORTLIBS[i]} ($filenameLib)..."
@@ -453,6 +518,10 @@ if [ $PORTLIBS_HAVE_TO_GET -eq 1 ]; then
 	DOWNLOADS_DONE=()
 	DIR_PORTLIBS=$DEVKITPRO/portlibs/armv6k
 	for namePortlib in ${PORTLIBS[@]}; do
+		if [ "$namePortlib" == "cpp3ds" ]; then
+			((i++))
+			continue
+		fi
 		if [ "${PORTLIBS_MUST_GET[i]}" == "1" ]; then
 			downloadLink=$(getDownloadLinkPortlib $namePortlib)
 
@@ -549,5 +618,8 @@ if [ $SETUP_ENVIRONMENT_DEVKITARM == "manual" ] || [ $SETUP_ENVIRONMENT_CPP3DS =
 	printf "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n"
 fi
 
-printf "Installation of cpp3ds done !\n"
-printf "If you want to compile the emulation, run install-emu.sh\n"
+printf "Installation of dev dependencies done !\n"
+
+if isProjectCPP3DS; then
+	printf "If you want to compile the emulation part, run install-emu.sh\n"
+fi

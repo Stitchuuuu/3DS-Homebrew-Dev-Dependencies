@@ -113,6 +113,11 @@ printf "Checking if dependencies for cpp3ds-emu are installed...\n"
 
 LIB_TO_INSTALLED=()
 for namePortlib in ${PORTLIBS[@]}; do
+	if [ "$namePortlib" == "cpp3ds" ]; then
+		((i++))
+		continue
+	fi
+
     filenameLib=$(getLibNameEmu $namePortlib)
 	filenameHeaderLib=$(getLibHeaderEmu $namePortlib)
 
